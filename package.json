@@ -10,7 +10,11 @@
     "url": "git+https://github.com/hornjs/evt.git"
   },
   "files": [
-    "dist"
+    "dist",
+    "package.json",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
   ],
   "type": "module",
   "exports": {
