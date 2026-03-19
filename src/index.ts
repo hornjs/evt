@@ -76,7 +76,7 @@ export class EventDispatcherErrorEvent extends Event {
  *   retain their own instance type in listeners.
  */
 export class EventDispatcher<
-  EventMap extends Record<string, Event> = Record<string, Event>,
+  EventMap extends { [K in keyof EventMap]: Event } = Record<string, Event>,
 > implements EventTarget {
   #listeners = new Map<string, ListenerRecord[]>();
   readonly #dispatchErrorEvent: boolean;
