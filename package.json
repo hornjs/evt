@@ -22,23 +22,20 @@
     "./package.json": "./package.json"
   },
   "publishConfig": {
-    "exports": {
-      ".": {
-        "types": "./dist/index.d.mts",
-        "default": "./dist/index.mjs"
-      },
-      "./package.json": "./package.json"
-    }
+    "access": "public",
+    "directory": "dist"
   },
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
     "lint": "oxlint . && oxfmt --check .",
     "fmt": "oxlint --fix . && oxfmt .",
+    "prepare:publish": "prepare-publish",
+    "prepare:publish:dry-run": "prepare-publish --dry-run",
     "test": "vitest",
     "typecheck": "tsc --noEmit",
     "release": "bumpp",
-    "prepublishOnly": "pnpm run build"
+    "prepublishOnly": "pnpm run build && pnpm run prepare:publish"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
@@ -46,6 +43,7 @@
     "bumpp": "^11.0.1",
     "oxfmt": "^0.37.0",
     "oxlint": "^1.52.0",
+    "prepare-publish": "latest",
     "tsdown": "^0.21.3",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"
