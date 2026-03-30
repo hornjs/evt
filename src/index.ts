@@ -27,33 +27,18 @@ export const EVENT_PHASE_AT_TARGET = 2;
 /**
  * Construction options for {@link EventDispatcher}.
  */
-export interface EventDispatcherOptions {
+export interface EventDispatcherOptions<DispatchedErrorEvent extends Event = Event> {
   /**
-   * When enabled, listener exceptions from non-`"error"` events are converted
-   * into a cancelable `"error"` event before being reported globally.
+   * Optionally creates an event to dispatch when a listener throws.
    *
-   * If the dispatched error event is canceled via `preventDefault()`, the
+   * If the returned event is canceled via `preventDefault()`, the
    * original exception is considered handled and is not forwarded to the global
    * error reporting channel.
-   *
-   * @default false
    */
-  dispatchErrorEvent?: boolean;
-}
-
-/**
- * Cancelable error event emitted by {@link EventDispatcher} when
- * `dispatchErrorEvent` is enabled and a listener throws.
- */
-export class EventDispatcherErrorEvent extends Event {
-  readonly error: unknown;
-  readonly causeEvent: Event;
-
-  constructor(error: unknown, causeEvent: Event) {
-    super("error", { cancelable: true });
-    this.error = error;
-    this.causeEvent = causeEvent;
-  }
+  createErrorEvent?: (
+    error: unknown,
+    causeEvent: Event,
+  ) => DispatchedErrorEvent | null | undefined;
 }
 
 /**
@@ -64,8 +49,8 @@ export class EventDispatcherErrorEvent extends Event {
  * - Event names are string keys from `EventMap`.
  * - Listener exceptions are reported asynchronously instead of aborting the
  *   dispatch loop, mirroring browser event dispatch behavior.
- * - Optionally, listener exceptions can first dispatch a cancelable `"error"`
- *   event before they are reported globally.
+ * - Optionally, listener exceptions can first dispatch a user-created event
+ *   before they are reported globally.
  * - The implementation is intentionally self-contained and does not delegate to
  *   the host runtime's native `EventTarget` internals. This keeps behavior
  *   consistent across platforms whose built-in `EventTarget` details may differ.
@@ -79,10 +64,11 @@ export class EventDispatcher<
   EventMap extends { [K in keyof EventMap]: Event } = Record<string, Event>,
 > implements EventTarget {
   #listeners = new Map<string, ListenerRecord[]>();
-  readonly #dispatchErrorEvent: boolean;
+  readonly #createErrorEvent?: EventDispatcherOptions<EventMap[keyof EventMap]>["createErrorEvent"];
+  #isDispatchingFactoryErrorEvent = false;
 
-  constructor(options: EventDispatcherOptions = {}) {
-    this.#dispatchErrorEvent = options.dispatchErrorEvent ?? false;
+  constructor(options: EventDispatcherOptions<EventMap[keyof EventMap]> = {}) {
+    this.#createErrorEvent = options.createErrorEvent;
   }
 
   /**
@@ -257,12 +243,25 @@ export class EventDispatcher<
   }
 
   #handleListenerError(error: unknown, event: Event): void {
-    if (!this.#dispatchErrorEvent || event.type === "error") {
+    if (!this.#createErrorEvent || this.#isDispatchingFactoryErrorEvent) {
       reportListenerError(error);
       return;
     }
 
-    const handled = !this.dispatchEvent(new EventDispatcherErrorEvent(error, event));
+    const errorEvent = this.#createErrorEvent(error, event);
+    if (!errorEvent) {
+      reportListenerError(error);
+      return;
+    }
+
+    let handled = false;
+    this.#isDispatchingFactoryErrorEvent = true;
+    try {
+      handled = !this.dispatchEvent(errorEvent);
+    } finally {
+      this.#isDispatchingFactoryErrorEvent = false;
+    }
+
     if (!handled) {
       reportListenerError(error);
     }

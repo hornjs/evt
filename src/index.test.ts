@@ -1,15 +1,38 @@
+import * as evt from "./index.js";
 import { describe, expect, test, vi } from "vitest";
 
 import {
   EVENT_PHASE_AT_TARGET,
   EVENT_PHASE_NONE,
   EventDispatcher,
-  EventDispatcherErrorEvent,
 } from "./index.js";
+
+class ServerErrorEvent extends Event {
+  readonly error: unknown;
+  readonly causeEvent: Event;
+
+  constructor(error: unknown, causeEvent: Event) {
+    super("server-error", { cancelable: true });
+    this.error = error;
+    this.causeEvent = causeEvent;
+  }
+}
+
+class ListenerErrorEvent extends Event {
+  readonly error: unknown;
+  readonly causeEvent: Event;
+
+  constructor(error: unknown, causeEvent: Event) {
+    super("error", { cancelable: true });
+    this.error = error;
+    this.causeEvent = causeEvent;
+  }
+}
 
 type PingEventMap = {
   ping: Event;
-  error: EventDispatcherErrorEvent;
+  error: ListenerErrorEvent;
+  "server-error": ServerErrorEvent;
 };
 
 function stubReportError() {
@@ -34,6 +57,10 @@ function stubReportError() {
 }
 
 describe("EventDispatcher", () => {
+  test("does not export a built-in error event class", () => {
+    expect("EventDispatcherErrorEvent" in evt).toBe(false);
+  });
+
   test("is EventTarget-compatible without inheriting the host EventTarget implementation", () => {
     const dispatcher = new EventDispatcher<PingEventMap>();
 
@@ -95,8 +122,12 @@ describe("EventDispatcher", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
-  test("dispatches a cancelable error event when enabled", () => {
-    const dispatcher = new EventDispatcher<PingEventMap>({ dispatchErrorEvent: true });
+  test("dispatches a factory-created error event when a listener throws", () => {
+    const dispatcher = new EventDispatcher<PingEventMap>({
+      createErrorEvent(error, causeEvent) {
+        return new ListenerErrorEvent(error, causeEvent);
+      },
+    });
     const reportedError = stubReportError();
     const original = new Error("boom");
     let receivedError: unknown;
@@ -119,7 +150,7 @@ describe("EventDispatcher", () => {
     reportedError.restore();
   });
 
-  test("reports thrown errors when auto error events are disabled", () => {
+  test("reports thrown errors when createErrorEvent is not configured", () => {
     const dispatcher = new EventDispatcher<PingEventMap>();
     const reportedError = stubReportError();
     const original = new Error("boom");
@@ -134,13 +165,86 @@ describe("EventDispatcher", () => {
     reportedError.restore();
   });
 
-  test("does not recursively dispatch error events from error listeners", () => {
-    const dispatcher = new EventDispatcher<PingEventMap>({ dispatchErrorEvent: true });
+  test("dispatches a custom event returned by createErrorEvent", () => {
+    const dispatcher = new EventDispatcher<PingEventMap>({
+      createErrorEvent(error, causeEvent) {
+        return new ServerErrorEvent(error, causeEvent);
+      },
+    });
+    const reportedError = stubReportError();
+    const original = new Error("boom");
+    let receivedEvent: ServerErrorEvent | undefined;
+
+    dispatcher.addEventListener("server-error", (event) => {
+      receivedEvent = event;
+      event.preventDefault();
+    });
+    dispatcher.addEventListener("ping", () => {
+      throw original;
+    });
+
+    dispatcher.dispatchEvent(new Event("ping"));
+
+    expect(receivedEvent).toBeInstanceOf(ServerErrorEvent);
+    expect(receivedEvent?.error).toBe(original);
+    expect(receivedEvent?.causeEvent.type).toBe("ping");
+    expect(reportedError.spy).not.toHaveBeenCalled();
+    reportedError.restore();
+  });
+
+  test("reports the original error when createErrorEvent returns null", () => {
+    const dispatcher = new EventDispatcher<PingEventMap>({
+      createErrorEvent() {
+        return null;
+      },
+    });
+    const reportedError = stubReportError();
+    const original = new Error("boom");
+
+    dispatcher.addEventListener("ping", () => {
+      throw original;
+    });
+
+    dispatcher.dispatchEvent(new Event("ping"));
+
+    expect(reportedError.spy).toHaveBeenCalledWith(original);
+    reportedError.restore();
+  });
+
+  test("reports the original error when a custom error event is not canceled", () => {
+    const dispatcher = new EventDispatcher<PingEventMap>({
+      createErrorEvent(error, causeEvent) {
+        return new ServerErrorEvent(error, causeEvent);
+      },
+    });
+    const reportedError = stubReportError();
+    const original = new Error("boom");
+    let receivedEvent: ServerErrorEvent | undefined;
+
+    dispatcher.addEventListener("server-error", (event) => {
+      receivedEvent = event;
+    });
+    dispatcher.addEventListener("ping", () => {
+      throw original;
+    });
+
+    dispatcher.dispatchEvent(new Event("ping"));
+
+    expect(receivedEvent).toBeInstanceOf(ServerErrorEvent);
+    expect(reportedError.spy).toHaveBeenCalledWith(original);
+    reportedError.restore();
+  });
+
+  test("does not recursively create new events for errors thrown by factory-produced events", () => {
+    const createErrorEvent = vi.fn((error: unknown, causeEvent: Event) => {
+      return new ServerErrorEvent(error, causeEvent);
+    });
+    const dispatcher = new EventDispatcher<PingEventMap>({ createErrorEvent });
     const reportedError = stubReportError();
     const original = new Error("boom");
     const nested = new Error("nested");
 
-    dispatcher.addEventListener("error", () => {
+    dispatcher.addEventListener("server-error", () => {
       throw nested;
     });
     dispatcher.addEventListener("ping", () => {
@@ -149,6 +253,7 @@ describe("EventDispatcher", () => {
 
     dispatcher.dispatchEvent(new Event("ping"));
 
+    expect(createErrorEvent).toHaveBeenCalledTimes(1);
     expect(reportedError.spy).toHaveBeenCalledWith(nested);
     expect(reportedError.spy).toHaveBeenCalledWith(original);
     expect(reportedError.spy).toHaveBeenCalledTimes(2);

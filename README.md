@@ -64,19 +64,30 @@ bus.addEventListener("ping", function () {
 By default, listener exceptions are reported through the global error reporting
 channel and do not abort the current dispatch loop.
 
-If you want thrown listener errors to first dispatch a cancelable `"error"`
-event, enable `dispatchErrorEvent`.
+If you want thrown listener errors to first dispatch a custom event, provide
+`createErrorEvent`.
 
 ```ts
-import { EventDispatcher, EventDispatcherErrorEvent } from "@hornjs/evt";
+import { EventDispatcher } from "@hornjs/evt";
+
+class ListenerErrorEvent extends Event {
+  constructor(
+    readonly error: unknown,
+    readonly causeEvent: Event,
+  ) {
+    super("error", { cancelable: true });
+  }
+}
 
 type Events = {
   ping: Event;
-  error: EventDispatcherErrorEvent;
+  error: ListenerErrorEvent;
 };
 
 const dispatcher = new EventDispatcher<Events>({
-  dispatchErrorEvent: true,
+  createErrorEvent(error, causeEvent) {
+    return new ListenerErrorEvent(error, causeEvent);
+  },
 });
 
 dispatcher.addEventListener("error", (event) => {
@@ -86,8 +97,33 @@ dispatcher.addEventListener("error", (event) => {
 });
 ```
 
-If an `"error"` event is not canceled, the original exception is still reported
-globally.
+You can also return your own event type:
+
+```ts
+class ServerErrorEvent extends Event {
+  constructor(
+    readonly error: unknown,
+    readonly causeEvent: Event,
+  ) {
+    super("server-error", { cancelable: true });
+  }
+}
+
+type Events = {
+  ping: Event;
+  "server-error": ServerErrorEvent;
+};
+
+const dispatcher = new EventDispatcher<Events>({
+  createErrorEvent(error, causeEvent) {
+    return new ServerErrorEvent(error, causeEvent);
+  },
+});
+```
+
+If the returned event is not canceled, the original exception is still reported
+globally. If you want `preventDefault()` to mark the error as handled, make sure
+the returned event is cancelable.
 
 ## Behavior Notes
 
@@ -104,6 +140,5 @@ globally.
 
 - `EventDispatcher<EventMap>`
 - `EventDispatcherOptions`
-- `EventDispatcherErrorEvent`
 - `EVENT_PHASE_NONE`
 - `EVENT_PHASE_AT_TARGET`

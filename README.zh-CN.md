@@ -61,18 +61,29 @@ bus.addEventListener("ping", function () {
 
 默认情况下，listener 抛出的异常会通过全局错误上报通道报告，但不会中断当前 dispatch 循环。
 
-如果你希望 listener 抛错时先派发一个可取消的 `"error"` 事件，可以启用 `dispatchErrorEvent`。
+如果你希望 listener 抛错时先派发一个自定义事件，可以提供 `createErrorEvent`。
 
 ```ts
-import { EventDispatcher, EventDispatcherErrorEvent } from "@hornjs/evt";
+import { EventDispatcher } from "@hornjs/evt";
+
+class ListenerErrorEvent extends Event {
+  constructor(
+    readonly error: unknown,
+    readonly causeEvent: Event,
+  ) {
+    super("error", { cancelable: true });
+  }
+}
 
 type Events = {
   ping: Event;
-  error: EventDispatcherErrorEvent;
+  error: ListenerErrorEvent;
 };
 
 const dispatcher = new EventDispatcher<Events>({
-  dispatchErrorEvent: true,
+  createErrorEvent(error, causeEvent) {
+    return new ListenerErrorEvent(error, causeEvent);
+  },
 });
 
 dispatcher.addEventListener("error", (event) => {
@@ -82,7 +93,31 @@ dispatcher.addEventListener("error", (event) => {
 });
 ```
 
-如果 `"error"` 事件没有被取消，原始异常仍然会继续通过全局错误通道上报。
+你也可以返回自己的事件类型：
+
+```ts
+class ServerErrorEvent extends Event {
+  constructor(
+    readonly error: unknown,
+    readonly causeEvent: Event,
+  ) {
+    super("server-error", { cancelable: true });
+  }
+}
+
+type Events = {
+  ping: Event;
+  "server-error": ServerErrorEvent;
+};
+
+const dispatcher = new EventDispatcher<Events>({
+  createErrorEvent(error, causeEvent) {
+    return new ServerErrorEvent(error, causeEvent);
+  },
+});
+```
+
+如果返回的事件没有被取消，原始异常仍然会继续通过全局错误通道上报。如果你希望 `preventDefault()` 表示“错误已处理”，请确保返回的事件是可取消的。
 
 ## 行为说明
 
@@ -97,6 +132,5 @@ dispatcher.addEventListener("error", (event) => {
 
 - `EventDispatcher<EventMap>`
 - `EventDispatcherOptions`
-- `EventDispatcherErrorEvent`
 - `EVENT_PHASE_NONE`
 - `EVENT_PHASE_AT_TARGET`
