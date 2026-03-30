@@ -119,6 +119,18 @@ const dispatcher = new EventDispatcher<Events>({
 
 如果返回的事件没有被取消，原始异常仍然会继续通过全局错误通道上报。如果你希望 `preventDefault()` 表示“错误已处理”，请确保返回的事件是可取消的。
 
+你也可以覆盖未处理 listener 错误的上报方式：
+
+```ts
+const dispatcher = new EventDispatcher<Events>({
+  reportError(error, causeEvent) {
+    console.error("listener failure", error, causeEvent?.type);
+  },
+});
+```
+
+第二个参数是可选的，因此 `globalThis.reportError` 仍然可以直接赋值给这个选项。
+
 ## 行为说明
 
 - 事件名来自事件映射中的字符串 key。

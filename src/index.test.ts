@@ -165,6 +165,24 @@ describe("EventDispatcher", () => {
     reportedError.restore();
   });
 
+  test("reports unhandled listener errors through options.reportError before globalThis.reportError", () => {
+    const reportError = vi.fn();
+    const globalReporter = stubReportError();
+    const dispatcher = new EventDispatcher<PingEventMap>({ reportError });
+    const original = new Error("boom");
+    const pingEvent = new Event("ping");
+
+    dispatcher.addEventListener("ping", () => {
+      throw original;
+    });
+
+    dispatcher.dispatchEvent(pingEvent);
+
+    expect(reportError).toHaveBeenCalledWith(original, pingEvent);
+    expect(globalReporter.spy).not.toHaveBeenCalled();
+    globalReporter.restore();
+  });
+
   test("dispatches a custom event returned by createErrorEvent", () => {
     const dispatcher = new EventDispatcher<PingEventMap>({
       createErrorEvent(error, causeEvent) {
@@ -258,5 +276,32 @@ describe("EventDispatcher", () => {
     expect(reportedError.spy).toHaveBeenCalledWith(original);
     expect(reportedError.spy).toHaveBeenCalledTimes(2);
     reportedError.restore();
+  });
+
+  test("passes the current cause event to options.reportError for nested listener failures", () => {
+    const reportError = vi.fn();
+    const dispatcher = new EventDispatcher<PingEventMap>({
+      createErrorEvent(error, causeEvent) {
+        return new ServerErrorEvent(error, causeEvent);
+      },
+      reportError,
+    });
+    const original = new Error("boom");
+    const nested = new Error("nested");
+    const pingEvent = new Event("ping");
+
+    dispatcher.addEventListener("server-error", () => {
+      throw nested;
+    });
+    dispatcher.addEventListener("ping", () => {
+      throw original;
+    });
+
+    dispatcher.dispatchEvent(pingEvent);
+
+    expect(reportError).toHaveBeenCalledTimes(2);
+    expect(reportError.mock.calls[0]?.[0]).toBe(nested);
+    expect(reportError.mock.calls[0]?.[1]).toBeInstanceOf(ServerErrorEvent);
+    expect(reportError.mock.calls[1]).toEqual([original, pingEvent]);
   });
 });

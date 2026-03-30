@@ -39,6 +39,15 @@ export interface EventDispatcherOptions<DispatchedErrorEvent extends Event = Eve
     error: unknown,
     causeEvent: Event,
   ) => DispatchedErrorEvent | null | undefined;
+
+  /**
+   * Optionally reports an unhandled listener error before the dispatcher falls
+   * back to `globalThis.reportError()`.
+   *
+   * The second parameter is optional so `globalThis.reportError` can be passed
+   * directly without adaptation.
+   */
+  reportError?: (error: unknown, causeEvent?: Event) => void;
 }
 
 /**
@@ -65,10 +74,12 @@ export class EventDispatcher<
 > implements EventTarget {
   #listeners = new Map<string, ListenerRecord[]>();
   readonly #createErrorEvent?: EventDispatcherOptions<EventMap[keyof EventMap]>["createErrorEvent"];
+  readonly #reportError?: EventDispatcherOptions<EventMap[keyof EventMap]>["reportError"];
   #isDispatchingFactoryErrorEvent = false;
 
   constructor(options: EventDispatcherOptions<EventMap[keyof EventMap]> = {}) {
     this.#createErrorEvent = options.createErrorEvent;
+    this.#reportError = options.reportError;
   }
 
   /**
@@ -244,13 +255,13 @@ export class EventDispatcher<
 
   #handleListenerError(error: unknown, event: Event): void {
     if (!this.#createErrorEvent || this.#isDispatchingFactoryErrorEvent) {
-      reportListenerError(error);
+      this.#reportListenerError(error, event);
       return;
     }
 
     const errorEvent = this.#createErrorEvent(error, event);
     if (!errorEvent) {
-      reportListenerError(error);
+      this.#reportListenerError(error, event);
       return;
     }
 
@@ -263,8 +274,12 @@ export class EventDispatcher<
     }
 
     if (!handled) {
-      reportListenerError(error);
+      this.#reportListenerError(error, event);
     }
+  }
+
+  #reportListenerError(error: unknown, causeEvent: Event): void {
+    reportListenerError(error, causeEvent, this.#reportError);
   }
 }
 
@@ -344,11 +359,21 @@ function callEventListener(thisArg: EventTarget, listener: EventListenerLike, ev
 /**
  * Surface listener failures without aborting the current dispatch loop.
  *
- * Browsers report event listener exceptions asynchronously; this helper follows
- * that model by preferring `globalThis.reportError()` and otherwise rethrowing
- * on a microtask.
+ * The fallback chain is:
+ * - a caller-provided `reportError(error, causeEvent)` function
+ * - `globalThis.reportError(error)`
+ * - rethrowing on a microtask
  */
-function reportListenerError(error: unknown): void {
+function reportListenerError(
+  error: unknown,
+  causeEvent: Event,
+  reportErrorOverride?: (error: unknown, causeEvent?: Event) => void,
+): void {
+  if (typeof reportErrorOverride === "function") {
+    reportErrorOverride(error, causeEvent);
+    return;
+  }
+
   const reportError = (
     globalThis as typeof globalThis & {
       reportError?: (error: unknown) => void;

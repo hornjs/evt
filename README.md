@@ -125,6 +125,19 @@ If the returned event is not canceled, the original exception is still reported
 globally. If you want `preventDefault()` to mark the error as handled, make sure
 the returned event is cancelable.
 
+You can also override how unhandled listener errors are reported:
+
+```ts
+const dispatcher = new EventDispatcher<Events>({
+  reportError(error, causeEvent) {
+    console.error("listener failure", error, causeEvent?.type);
+  },
+});
+```
+
+The second parameter is optional, so `globalThis.reportError` remains directly
+assignable.
+
 ## Behavior Notes
 
 - Event names are string keys from the event map.
