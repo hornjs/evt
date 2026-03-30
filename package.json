@@ -1,6 +1,6 @@
 {
   "name": "@hornjs/evt",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Typed EventTarget-compatible event dispatching with cross-platform-consistent behavior.",
   "homepage": "https://github.com/hornjs/evt#readme",
   "license": "MIT",
