@@ -2,7 +2,7 @@
 
 [简体中文](./README.zh-CN.md)
 
-Typed DOM-style event dispatching with cross-platform-consistent behavior.
+Typed `EventTarget`-compatible event dispatching with cross-platform-consistent behavior.
 
 `evt` provides a small `EventTarget`-compatible dispatcher for libraries that
 want:
@@ -143,7 +143,7 @@ assignable.
 - Event names are string keys from the event map.
 - Listener identity matches the DOM model: `listener + capture`.
 - `once` and `signal` behave like `addEventListener()`.
-- Dispatch models the at-target phase only. There is no bubbling tree.
+- Dispatch is limited to a single target; it does not model DOM capture or bubbling propagation.
 - `event.target`, `event.currentTarget`, and `event.eventPhase` are patched to
   follow DOM-style dispatch semantics.
 - The implementation uses its own listener registry instead of delegating to the

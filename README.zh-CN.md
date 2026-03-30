@@ -2,7 +2,7 @@
 
 [English](./README.md)
 
-提供跨平台一致行为的、类型化的 DOM 风格事件分发。
+提供跨平台一致行为的、类型化的 `EventTarget` 兼容事件分发。
 
 `evt` 提供了一个兼容 `EventTarget` 的小型事件分发器，适合需要以下能力的库：
 
@@ -136,7 +136,7 @@ const dispatcher = new EventDispatcher<Events>({
 - 事件名来自事件映射中的字符串 key。
 - listener 的身份匹配规则和 DOM 一致：`listener + capture`。
 - `once` 和 `signal` 的行为与 `addEventListener()` 保持一致。
-- 当前只建模 at-target 阶段，不支持事件冒泡树。
+- 当前只支持单一 target 上的事件派发，不模拟 DOM 的捕获和冒泡传播过程。
 - `event.target`、`event.currentTarget` 和 `event.eventPhase` 会被调整为符合 DOM 风格的 dispatch 语义。
 - 实现内部使用自定义的 listener registry，而不是委托给宿主运行时的 `EventTarget`，以保证跨平台一致性。
 
